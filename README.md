@@ -2,4 +2,4 @@ Ocean-Connector
 ===============
 
 
-This is a dummy load for the ocean connector using an MSP430 "Launchpad" and an LED matrix, multiplexed into 16 rows of 8 LEDs each.
+This is a collection of projects that wirelessly pass data and power over an underwater connector.
