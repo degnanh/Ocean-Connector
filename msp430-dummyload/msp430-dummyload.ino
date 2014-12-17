@@ -3,7 +3,7 @@
  *  Intended for use as a configurable load over serial.
  *  Written in Energia 0101E0014, unforunately not built in CCS.
  *  
- *  Version: 1.0
+ *  Version: 2.0
  *
  *  Updates a bi-colour 8x8 LED matrix at about 1ms per row.
  *    With 8 rows, that is 125 Hz refresh rate. Datasheet allows
@@ -22,6 +22,7 @@
  *
  *  Version history:
  *  1.0  Scroll a pattern vertically with no visible flicker
+ *  2.0  added Conway's game of life logic
  */
 
 /* SPI */
@@ -40,6 +41,7 @@ uint8_t LEDCurrentRow = 0;
 /* LED storage, global arrays */
 uint8_t red[LED_ROWS];
 uint8_t green[LED_ROWS];
+uint8_t life[LED_ROWS][LED_ROWS];
 
 /* timer variable LED row updating, units in microseconds */
 unsigned long LEDLastRowTime = 0;
@@ -47,22 +49,24 @@ const unsigned long LEDRowinterval = 750;
 
 /* screen update date, units in milliseconds */
 unsigned long LEDchangeTime = 0;
-const unsigned long LEDchangeInterval = 1000;
+const unsigned long LEDchangeInterval = 175;
 
 
 /* function prototypes */
 void updateLEDs();
 void updateLEDRow();
+uint8_t countNeighbours();
 
 /* Initialize digital pin output modes */
 void setup()
 {
   /* Fill the array with random values */
-  randomSeed(1);
+  randomSeed(2);
   for (uint8_t i = 0; i < LED_ROWS; i++) {
     pinMode(LED[i], OUTPUT);
-    red[i] = random(255);
-    green[i] = random(255);
+    for (uint8_t j=0; j < LED_ROWS; j++) {
+      life[j][i] = random(255) % 2;
+    }
   }
 
   /* Initialize SPI */
@@ -71,6 +75,8 @@ void setup()
   SPI.begin();
   SPI.setDataMode(SPI_MODE3);
   SPI.setClockDivider(SPI_CLOCK_DIV2);
+
+  Serial.begin(9600);
 }
 
 
@@ -80,6 +86,8 @@ void setup()
 void loop() {
   /* change the displayed LED pattern */
   if (millis() - LEDchangeTime >= LEDchangeInterval) {
+    Serial.write(life[1][2]+65);
+    Serial.write(life[3][2]+65);
     updateLEDs();
     LEDchangeTime = millis();
   }
@@ -95,14 +103,32 @@ void loop() {
 /* This scrolls the LED patterns vertically by one step */
 void updateLEDs()
 {
-  uint8_t tr = red[0];
-  uint8_t tg = green[0];
-  for (int i=0; i<LED_ROWS-1; i++) {
-    red[i] = red[i+1];
-    green[i] = green[i+1];
+  for (int x=0; x < LED_ROWS; x++) {
+    red[x] = 0x00;
+    green[x] = 0x00;
+    for (int y=0; y < LED_ROWS; y++) {
+      int n = countNeighbours(x,y);
+      /* game logic: live cell stays alive with 2 or 3 neighbours */
+      if (life[x][y]) {
+        if (n <= 1 || n >= 4) {
+          life[x][y] = 0;
+          red[x] |= 0x01 << y;
+        } 
+        else {
+          green[x] |= 0x01 << y;
+          red[x] |= 0x01 << y;
+        }
+      } 
+      else {
+        /* if cell is dead, check to see if it becomes alive */
+        if (n == 3) {
+          life[x][y] = 1;
+          green[x] |= 0x01 << y;
+          
+        }
+      }
+    }
   }
-  red[7] = tr;
-  green[7] = tg;
 }
 
 /* Turn off current LED row, feed in next rows over SPI, then turn on LEDs*/
@@ -128,5 +154,24 @@ void updateLEDRow()
   /* turn on the LED row */
   digitalWrite(LED[LEDCurrentRow], HIGH);
 }
+
+
+int countNeighbours(int x, int y)
+{
+  int count = 0;
+  const int r = LED_ROWS;
+  count += life[(x+1) % r][y];
+  count += life[(x+1) % r][(y+1) % r];
+  count += life[(x+1) % r][(y+r-1) % r];
+
+  count += life[x][(y+1) % r];
+  count += life[x][(y+r-1) % r];
+
+  count += life[(x+r-1) % r][y];
+  count += life[(x+r-1) % r][(y+1) % r];
+  count += life[(x+r-1) % r][(y+r-1) % r];
+  return count;
+}
+
 
 
